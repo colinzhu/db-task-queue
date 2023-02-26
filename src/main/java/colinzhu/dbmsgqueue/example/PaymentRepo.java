@@ -3,10 +3,9 @@ package colinzhu.dbmsgqueue.example;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
-import io.vertx.jdbcclient.JDBCConnectOptions;
 import io.vertx.jdbcclient.JDBCPool;
-import io.vertx.sqlclient.PoolOptions;
 import io.vertx.sqlclient.Row;
+import io.vertx.sqlclient.RowSet;
 import io.vertx.sqlclient.Tuple;
 import lombok.extern.slf4j.Slf4j;
 
@@ -19,7 +18,7 @@ public class PaymentRepo {
     java -cp /home/colin/.m2/repository/com/h2database/h2/2.1.214/h2-2.1.214.jar org.h2.tools.Server -tcp -ifNotExists -baseDir ./example-db
      */
 
-    private JDBCPool pool;
+    private final JDBCPool pool;
 
     public PaymentRepo(Vertx vertx) {
         final JsonObject config = new JsonObject()
@@ -28,57 +27,40 @@ public class PaymentRepo {
                 .put("datasourceName", "example-db")
                 .put("user", "sa")
                 .put("password", "sa")
-                .put("max_pool_size", 16);
+                .put("max_pool_size", 5);
 
         pool = JDBCPool.pool(vertx, config);
 
     }
 
-    public Future<List<Payment>> findByStatusOrderByCreateTime(String status, int limit) {
-        return Future.future(promise -> {
-            pool.preparedQuery("SELECT * FROM PAYMENT WHERE STATUS = ? order by CREATE_TIME LIMIT ?")
-                    .execute(Tuple.of(status, limit))
-                    .onFailure(e -> {
-                        log.error("error", e);
-                    })
-                    .onSuccess(rows -> {
-                        List<Payment> paymentList = new ArrayList<>();
-                        for (Row row : rows) {
-                            paymentList.add(new Payment(row.getLong("ID"), row.getString("STATUS"), row.getLong("CREATE_TIME")));
-                            System.out.println(row.getInteger("ID") + " " + row.getString("STATUS") + " " + row.getLong("CREATE_TIME"));
-                        }
-                        promise.complete(paymentList);
-                    });
-        });
+    public Future<List<Payment>> findByStatusOrderByCreateTime3(String status, int limit) {
+        return Future.future(promise -> pool.preparedQuery("SELECT * FROM PAYMENT WHERE STATUS = ? order by CREATE_TIME LIMIT ?")
+                .execute(Tuple.of(status, limit))
+                .onFailure(e -> log.error("error", e))
+                .onSuccess(rows -> {
+                    List<Payment> paymentList = new ArrayList<>();
+                    for (Row row : rows) {
+                        paymentList.add(new Payment(row.getLong("ID"), row.getString("STATUS"), row.getLong("CREATE_TIME")));
+                        System.out.println(row.getInteger("ID") + " " + row.getString("STATUS") + " " + row.getLong("CREATE_TIME"));
+                    }
+                    promise.complete(paymentList);
+                }));
     }
 
-
-    public Future<Void> updateStatusById(String status, Long id) {
-        return Future.future(promise -> {
-            pool.preparedQuery("UPDATE PAYMENT SET STATUS = ? WHERE ID = ?")
-                    .execute(Tuple.of(status, id))
-                    .onFailure(e -> {
-                        log.error("error", e);
-                    })
-                    .onSuccess(event -> promise.complete());
-        });
+    public Future<RowSet<Row>> findByStatusOrderByCreateTime(String status, int limit) {
+        return pool.preparedQuery("SELECT * FROM PAYMENT WHERE STATUS = ? order by CREATE_TIME LIMIT ?")
+                .execute(Tuple.of(status, limit));
     }
 
-
-    public Future<Void> insert(Payment payment) {
-        return Future.future(promise -> {
-            pool.preparedQuery("insert into PAYMENT (ID, STATUS, CREATE_TIME) values (?, ?, ?)")
-                    .execute(Tuple.of(payment.getId(), payment.getStatus(), payment.getCreateTime()))
-                    .onFailure(e -> {
-                        log.error("error", e);
-                    })
-                    .onSuccess(rows -> {
-                        for (Row row : rows) {
-                            System.out.println(row.getInteger("ID") + " " + row.getString("STATUS") + " inserted");
-                        }
-                        promise.complete();
-                    });
-        });
+    public Future<RowSet<Row>> updateStatusById(String status, Long id) {
+        return pool.preparedQuery("UPDATE PAYMENT SET STATUS = ? WHERE ID = ?")
+                .execute(Tuple.of(status, id));
+    }
+    public Future<RowSet<Row>> insert(Payment payment, int number) {
+        return pool.preparedQuery("insert into PAYMENT (ID, STATUS, CREATE_TIME) values (?, ?, ?)")
+                .execute(Tuple.of(payment.getId(), payment.getStatus(), payment.getCreateTime()))
+                .onSuccess(rows -> log.info("#{} inserted", number))
+                .onFailure(e -> log.error("error inserting", e));
     }
 
 }

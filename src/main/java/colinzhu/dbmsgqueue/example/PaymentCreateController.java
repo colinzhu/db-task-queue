@@ -4,6 +4,8 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
+import io.vertx.sqlclient.Row;
+import io.vertx.sqlclient.RowSet;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -15,7 +17,7 @@ public class PaymentCreateController extends AbstractVerticle {
         Vertx.vertx().deployVerticle(PaymentCreateController.class.getName());
     }
 
-    PaymentRepo paymentRepo;
+    private PaymentRepo paymentRepo;
 
     @Override
     public void start() throws Exception {
@@ -25,28 +27,16 @@ public class PaymentCreateController extends AbstractVerticle {
     }
 
     private void createPayment() {
+        long start = System.currentTimeMillis();
         List<Future> allPaymentFutures = new ArrayList<>();
-        for (int i = 0; i < 1000; i++) {
-            long start = System.currentTimeMillis();
-            long id = System.nanoTime();
-            Future<Void> future = paymentRepo.insert(new Payment(id, "CREATED", System.currentTimeMillis())).onSuccess(event -> {
-                log.info("inserted {}, {}ms", id, System.currentTimeMillis() - start);
-            });
+        for (int i = 1; i <= 1000; i++) {
+            Future<RowSet<Row>> future = paymentRepo.insert(new Payment(System.nanoTime(), "CREATED", System.currentTimeMillis()), i);
             allPaymentFutures.add(future);
         }
         CompositeFuture.all(allPaymentFutures).onSuccess(event -> {
-            log.info("create payments completed");
+            log.info("create payments completed, time: {}ms", System.currentTimeMillis() - start);
             System.exit(0);
-        });
-
-//        vertx.setTimer(1, id -> {
-//            count++;
-//            long start = System.currentTimeMillis();
-//            paymentRepo.insert(new Payment(paymentStartId + count, "CREATED", System.currentTimeMillis())).onSuccess(event -> {
-//                log.info("inserted {}, {}ms", paymentStartId + count, System.currentTimeMillis()-start);
-//                createPayment();
-//            });
-//        });
+        }).onFailure(e -> log.info("error waiting for all", e));
     }
 
 }

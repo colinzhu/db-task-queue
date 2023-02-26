@@ -12,3 +12,7 @@ insert into PAYMENT (ID, STATUS, CREATE_TIME) values (4, 'CREATED', 167733737269
 COMMIT;
 
 SELECT * FROM PAYMENT where status = 'CREATED';
+
+
+select count(*) from payment;
+SELECT * FROM PAYMENT;
