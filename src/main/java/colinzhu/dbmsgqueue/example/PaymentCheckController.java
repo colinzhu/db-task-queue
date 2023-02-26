@@ -2,10 +2,9 @@ package colinzhu.dbmsgqueue.example;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
-import io.vertx.core.AbstractVerticle;
-import io.vertx.core.CompositeFuture;
-import io.vertx.core.Future;
-import io.vertx.core.Vertx;
+import io.vertx.core.*;
+import io.vertx.core.buffer.Buffer;
+import io.vertx.ext.web.client.HttpResponse;
 import io.vertx.ext.web.client.WebClient;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
@@ -31,6 +30,10 @@ public class PaymentCheckController extends AbstractVerticle {
         super.start();
         client = WebClient.create(vertx);
         paymentRepo = new PaymentRepo(vertx);
+//        vertx.exceptionHandler(e -> {
+//            log.error("Unexpected error, retry in 60s", e);
+//            vertx.setTimer(1000*5, id -> getBatchAndProcess());
+//        });
         getBatchAndProcess();
     }
 
@@ -44,39 +47,44 @@ public class PaymentCheckController extends AbstractVerticle {
 
                 List<Future> futures = payments.stream().map(this::processSingle).collect(Collectors.toList());
                 CompositeFuture.all(futures).onSuccess(event -> {
-                    log.info("batchId:{} all items processed", batchId);
+                    log.info("batchId:{} size: {}, all items processed", batchId, futures.size());
                     getBatchAndProcess();
-                }).onFailure(e -> log.error("Error processing batch", e));
+                }).onFailure(e -> {
+                    log.error("Error processing batch, retry in 5000ms", e);
+                    vertx.setTimer(5000, id -> getBatchAndProcess());
+                });
             } else {
                 log.info("batchId:{} size: 0, wait for 5000ms and then continue", batchId);
                 vertx.setTimer(5000, id -> getBatchAndProcess());
             }
+        }).onFailure(e -> {
+            log.error("Error get batch from DB, retry in 60s", e);
+            vertx.setTimer(1000*60, id -> getBatchAndProcess());
         });
     }
 
-    private Future<Payment> processSingle(Payment payment) {
-        return Future.future(promise -> {
-            log.info("check started payment:{}", payment.getId());
-            client.get(8888, "localhost", "/?id=" + payment.getId())
-                    .send()
-                    .onSuccess(response -> {
-                        int status = response.statusCode();
-                        if (status == 200) {
-                            paymentRepo.updateStatusById("CHECKED", payment.getId())
-                                    .onSuccess(event -> promise.complete(payment));
-                        } else if (status == 400) {
-                            paymentRepo.updateStatusById("CREATED_DEAD", payment.getId())
-                                    .onSuccess(event -> promise.complete(payment));
-                        } else if (status == 500) {
-                            log.info("check retry in 5000ms status:{} payment:{}", status, payment.getId());
-                            vertx.setTimer(5000, id -> processSingle(payment).onSuccess(promise::complete));
-                        }
-                    })
-                    .onFailure(err -> {
-                        log.info("payment: {}, retry in 5000ms, something went wrong {}", payment.getId(), err.getMessage());
-                        vertx.setTimer(5000, id -> processSingle(payment).onSuccess(promise::complete));
-                    });
-        });
+    private Future<Integer> processSingle(Payment payment) {
+        return Future.future(promise -> client.get(8888, "localhost", "/?id=" + payment.getId())
+                .send()
+                .onSuccess(getHttpResponseHandler(payment, promise))
+                .onFailure(err -> {
+                    log.info("failed to call check API, retry in 5000ms, {} {}", payment.getId(), err.getMessage());
+                    vertx.setTimer(5000, id -> processSingle(payment).onSuccess(promise::complete));
+                }));
+    }
+
+    private Handler<HttpResponse<Buffer>> getHttpResponseHandler(Payment payment, Promise<Integer> promise) {
+        return response -> {
+            int statusCode = response.statusCode();
+            if (statusCode == 200) {
+                paymentRepo.updateStatusById(vertx, promise, "CHECKED", payment.getId());
+            } else if (statusCode == 400) {
+                paymentRepo.updateStatusById(vertx, promise, "CREATED_CHECK_400", payment.getId());
+            } else if (statusCode >= 500 && statusCode <=599) {
+                log.info("{},{}, retry in 5000ms", statusCode, payment.getId());
+                vertx.setTimer(5000, id -> processSingle(payment).onSuccess(promise::complete));
+            }
+        };
     }
 
 }

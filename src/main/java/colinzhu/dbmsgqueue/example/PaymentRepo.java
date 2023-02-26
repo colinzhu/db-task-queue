@@ -1,6 +1,7 @@
 package colinzhu.dbmsgqueue.example;
 
 import io.vertx.core.Future;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.jdbcclient.JDBCPool;
@@ -56,6 +57,20 @@ public class PaymentRepo {
         return pool.preparedQuery("UPDATE PAYMENT SET STATUS = ? WHERE ID = ?")
                 .execute(Tuple.of(status, id));
     }
+
+    public void updateStatusById(Vertx vertx, Promise<Integer> promise, String status, Long id) {
+        pool.preparedQuery("UPDATE PAYMENT SET STATUS = ? WHERE ID = ?")
+                .execute(Tuple.of(status, id))
+                .onSuccess(rows -> {
+                    log.info("{}, DB updated to {}", id, status);
+                    promise.complete(rows.size());
+                })
+                .onFailure(e -> {
+                    log.error("Error update db status, retry in 5000ms", e);
+                    vertx.setTimer(5000, timerId -> updateStatusById(vertx, promise, status, id));
+                });
+    }
+
     public Future<RowSet<Row>> insert(Payment payment, int number) {
         return pool.preparedQuery("insert into PAYMENT (ID, STATUS, CREATE_TIME) values (?, ?, ?)")
                 .execute(Tuple.of(payment.getId(), payment.getStatus(), payment.getCreateTime()))
