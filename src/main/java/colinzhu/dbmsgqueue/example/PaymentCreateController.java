@@ -29,7 +29,7 @@ public class PaymentCreateController extends AbstractVerticle {
     private void createPayment() {
         long start = System.currentTimeMillis();
         List<Future> allPaymentFutures = new ArrayList<>();
-        for (int i = 1; i <= 1000; i++) {
+        for (int i = 1; i <= 10; i++) {
             Future<RowSet<Row>> future = paymentRepo.insert(new Payment(System.nanoTime(), "CREATED", System.currentTimeMillis()), i);
             allPaymentFutures.add(future);
         }

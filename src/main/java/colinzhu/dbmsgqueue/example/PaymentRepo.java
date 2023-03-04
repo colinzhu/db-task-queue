@@ -7,6 +7,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.jdbcclient.JDBCPool;
 import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.RowSet;
+import io.vertx.sqlclient.SqlResult;
 import io.vertx.sqlclient.Tuple;
 import lombok.extern.slf4j.Slf4j;
 
@@ -48,14 +49,20 @@ public class PaymentRepo {
                 }));
     }
 
-    public Future<RowSet<Row>> findByStatusOrderByCreateTime(String status, int limit) {
+    public Future<List<Payment>> findByStatusOrderByCreateTime(String status, int limit) {
         return pool.preparedQuery("SELECT * FROM PAYMENT WHERE STATUS = ? order by CREATE_TIME LIMIT ?")
-                .execute(Tuple.of(status, limit));
+                .execute(Tuple.of(status, limit))
+                .compose(rows -> {
+                    List<Payment> payments = new ArrayList<>();
+                    rows.forEach(row -> payments.add(new Payment(row.getLong("ID"), row.getString("STATUS"), row.getLong("CREATE_TIME"))));
+                    return  Future.succeededFuture(payments);
+                });
     }
 
-    public Future<RowSet<Row>> updateStatusById(String status, Long id) {
+    public Future<Integer> updateStatusById(String status, Long id) {
         return pool.preparedQuery("UPDATE PAYMENT SET STATUS = ? WHERE ID = ?")
-                .execute(Tuple.of(status, id));
+                .execute(Tuple.of(status, id))
+                .map(SqlResult::rowCount);
     }
 
     public void updateStatusById(Vertx vertx, Promise<Integer> promise, String status, Long id) {

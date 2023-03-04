@@ -8,6 +8,8 @@ import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Random;
+
 @Slf4j
 public class PaymentCheckServer extends AbstractVerticle {
     public static void main(String[] args) {
@@ -20,25 +22,12 @@ public class PaymentCheckServer extends AbstractVerticle {
         Router router = Router.router(vertx);
 
         router.route().handler(routingContext -> {
-            String paramId = routingContext.request().getParam("id");
-            log.info("request received " + routingContext.request().getParam("id"));
+            Random random = new Random();
+            int[] values = {200, 400, 500};
+            int randomStatusCode = values[random.nextInt(values.length)];
+            log.info("[{}] request received {}",routingContext.request().getParam("id"), randomStatusCode);
             vertx.setTimer(10, id -> {
-                if (null != paramId && paramId.endsWith("4")) {
-                    routingContext.response()
-                            .putHeader("content-type", "text/plain")
-                            .setStatusCode(400)
-                            .end("400 Hello from Vert.x! " + paramId);
-
-                } else if (null != paramId && paramId.endsWith("5A")){
-                    routingContext.response()
-                            .putHeader("content-type", "text/plain")
-                            .setStatusCode(500)
-                            .end("500 Hello from Vert.x! " + paramId);
-                } else {
-                    routingContext.response()
-                            .putHeader("content-type", "text/plain")
-                            .end("Hello from Vert.x! " + paramId);
-                }
+                routingContext.response().setStatusCode(randomStatusCode).end(randomStatusCode + "");
             });
         });
         server.requestHandler(router).listen(8888);
