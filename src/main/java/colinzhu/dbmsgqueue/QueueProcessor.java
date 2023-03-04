@@ -26,6 +26,9 @@ public class QueueProcessor {
     private int processErrRetryInterval = 5000;
     @Setter
     private int errPollingRetryInterval = 60 * 1000;
+    @Setter
+    private boolean continueWhenNoTask = true;
+
 
     public <T> void fetchBatchAndProcess(Supplier<Future<List<T>>> listFutureSupplier, Function<T, Future<?>> itemProcessor, Function<CompositeFuture, Future<?>> postBatchProcessor) {
         batchId++;
@@ -50,8 +53,12 @@ public class QueueProcessor {
                             retry.accept(5000);
                         });
                     } else {
-                        log.debug("[{}][Batch:{}] size:0, fetch again in {}ms", queueName, batchId, noTaskPollInterval);
-                        retry.accept(5000);
+                        if (continueWhenNoTask) {
+                            log.debug("[{}][Batch:{}] size:0, fetch again in {}ms", queueName, batchId, noTaskPollInterval);
+                            retry.accept(5000);
+                        } else {
+                            log.info("[{}][Batch:{}] size:0, no more fetching.", queueName, batchId);
+                        }
                     }
                 }).onFailure(e -> {
                     log.error("[{}][Batch:{}] Failed to fetch records, retry in {}ms", queueName, errPollingRetryInterval, e);

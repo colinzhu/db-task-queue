@@ -33,9 +33,13 @@ public class PaymentCheckController extends AbstractVerticle {
         paymentRepo = new PaymentRepo(vertx);
         retryApiInvoker = new RetryApiInvoker(vertx, "MSG-CHECK");
         retryApiInvoker.setServerErrRetryInterval(5000);
-        QueueProcessor queueProcessor = new QueueProcessor(vertx, "MSG-CREATED");
+        processQueue("CREATED");
+    }
+    private void processQueue(String status) {
+        QueueProcessor queueProcessor = new QueueProcessor(vertx, "MSG-" + status);
         queueProcessor.setNoTaskPollInterval(5000);
-        queueProcessor.fetchBatchAndProcess(() -> paymentRepo.findByStatusOrderByCreateTime("CREATED", 100), this::processSinglePayment, this::postBatchProcessing);
+        queueProcessor.setContinueWhenNoTask(false);
+        queueProcessor.fetchBatchAndProcess(() -> paymentRepo.findByStatusOrderByCreateTime(status, 100), this::processSinglePayment, this::postBatchProcessing);
     }
 
     private Future<Integer> processSinglePayment(Payment payment) {
