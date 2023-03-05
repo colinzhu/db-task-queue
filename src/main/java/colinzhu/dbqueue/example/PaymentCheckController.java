@@ -34,7 +34,7 @@ public class PaymentCheckController extends AbstractVerticle {
         super.start();
         client = WebClient.create(vertx);
         paymentRepo = new PaymentRepo(vertx);
-        retryApiInvoker = new RetryApiInvoker(vertx, "MSG-CHECK");
+        retryApiInvoker = new RetryApiInvoker(vertx, "API-MSG-CHECK");
         retryApiInvoker.setServerErrRetryInterval(5000);
         processQueue("CREATED", true);
     }
@@ -44,13 +44,12 @@ public class PaymentCheckController extends AbstractVerticle {
     }
 
     private void processQueue(String status, boolean continueWhenNoTask) {
-        QueueProcessor queueProcessor = new QueueProcessor(vertx, "MSG-" + status);
-        queueProcessor.setNoTaskPollInterval(5000);
-        queueProcessor.setContinueWhenNoTask(continueWhenNoTask);
-        queueProcessor.fetchBatchAndProcess(() -> paymentRepo.findByStatusOrderByCreateTime(status, 100), this::processSinglePayment, this::postBatchProcessing);
+        QueueProcessor queueProcessor = new QueueProcessor(vertx, "QUEUE-MSG-" + status);
+        queueProcessor.setNoTaskPollInterval(5000).setContinueWhenNoTask(continueWhenNoTask);
+        queueProcessor.fetchBatchAndProcess(() -> paymentRepo.findByStatusOrderByCreateTime(status, 100), this::processSinglePayment, null);
     }
 
-    private Future<Payment> processSinglePayment(Payment payment) {
+    private Future<Integer> processSinglePayment(Payment payment) {
         HttpRequest<Buffer> httpRequest = client.get(8888, "localhost", "/?id=" + payment.getId());
         Future<HttpResponse<Buffer>> respFuture = Future.future(promise -> retryApiInvoker.callHttpApiWithRetry(String.valueOf(payment.getId()), httpRequest::send, promise));
         return respFuture.map(httpResp -> {
@@ -60,7 +59,7 @@ public class PaymentCheckController extends AbstractVerticle {
                 payment.setStatus("CHECK_400");
             }
             return payment;
-        });
+        }).compose(pay -> paymentRepo.updateStatus(pay));
     }
 
     private Future<Integer> postBatchProcessing(CompositeFuture compositeFuture) {

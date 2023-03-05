@@ -67,10 +67,19 @@ public class PaymentRepo {
                 });
     }
 
-    public Future<Integer> updateStatusById(String status, Long id) {
-        return pool.preparedQuery("UPDATE PAYMENT SET STATUS = ? WHERE ID = ?")
-                .execute(Tuple.of(status, id))
-                .map(SqlResult::rowCount);
+    public Future<Integer> updateStatus(Payment payment) {
+        return SqlTemplate.forUpdate(pool, "UPDATE PAYMENT SET STATUS=#{status} WHERE id=#{id}")
+                .mapFrom(updatePaymentStatusToParamMapper)
+                .execute(payment)
+                .map(SqlResult::rowCount)
+                .onSuccess(ar -> {
+                    if (ar == 1) {
+                        log.info("[updateStatus] [{}] [{}] completed", payment.getId(), payment.getStatus());
+                    } else {
+                        log.warn("[updateStatus] [{}] [{}] failed, rowCount:{}", payment.getId(), payment.getStatus(), ar);
+                    }
+                })
+                .onFailure(err -> log.error("[updateStatus] [{}] [{}] error", err));
     }
 
     public Future<Integer> updateStatusInBatch(List<Payment> payments) {
@@ -78,7 +87,7 @@ public class PaymentRepo {
                 .mapFrom(updatePaymentStatusToParamMapper)
                 .executeBatch(payments)
                 .map(SqlResult::size)
-                .onSuccess(ar -> log.info("update status in batch completed."))
+                .onSuccess(ar -> log.debug("update status in batch completed. {}", ar))
                 .onFailure(err -> log.error("failed to update status in batch"));
     }
 

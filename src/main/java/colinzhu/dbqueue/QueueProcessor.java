@@ -5,6 +5,7 @@ import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
+import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
@@ -15,10 +16,10 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RequiredArgsConstructor
+@Accessors(chain = true)
 public class QueueProcessor {
     private final Vertx vertx;
     private final String queueName;
-    private int batchId = 0;
 
     @Setter
     private int noTaskPollInterval = 5000;
@@ -31,12 +32,12 @@ public class QueueProcessor {
 
 
     public <T> void fetchBatchAndProcess(Supplier<Future<List<T>>> listFutureSupplier, Function<T, Future<?>> itemProcessor, Function<CompositeFuture, Future<?>> postBatchProcessor) {
-        batchId++;
-        Consumer<Integer> retry = delay -> vertx.setTimer(5000, id -> fetchBatchAndProcess(listFutureSupplier, itemProcessor, postBatchProcessor));
+        long batchId = System.currentTimeMillis();
+        Consumer<Integer> retry = delay -> vertx.setTimer(delay, id -> fetchBatchAndProcess(listFutureSupplier, itemProcessor, postBatchProcessor));
         listFutureSupplier.get()
                 .onSuccess(list -> {
                     if (list.size() > 0) {
-                        log.info("[{}][Batch:{}] size:{}", queueName, batchId, list.size());
+                        log.info("[{}][Batch:{}] size:{}, started", queueName, batchId, list.size());
                         List<Future> futures = list.stream().map(itemProcessor).collect(Collectors.toList());
                         CompositeFuture.all(futures).compose(compositeFuture -> {
                             if (postBatchProcessor == null) {
@@ -50,19 +51,19 @@ public class QueueProcessor {
                             fetchBatchAndProcess(listFutureSupplier, itemProcessor, postBatchProcessor);
                         }).onFailure(e -> {
                             log.error("[{}][Batch:{}] error processing batch, retry in {}ms", queueName, batchId, processErrRetryInterval, e);
-                            retry.accept(5000);
+                            retry.accept(processErrRetryInterval);
                         });
                     } else {
                         if (continueWhenNoTask) {
                             log.debug("[{}][Batch:{}] size:0, fetch again in {}ms", queueName, batchId, noTaskPollInterval);
-                            retry.accept(5000);
+                            retry.accept(noTaskPollInterval);
                         } else {
                             log.info("[{}][Batch:{}] size:0, no more fetching.", queueName, batchId);
                         }
                     }
                 }).onFailure(e -> {
                     log.error("[{}][Batch:{}] Failed to fetch records, retry in {}ms", queueName, errPollingRetryInterval, e);
-                    retry.accept(1000 * 60);
+                    retry.accept(errPollingRetryInterval);
                 });
     }
 
