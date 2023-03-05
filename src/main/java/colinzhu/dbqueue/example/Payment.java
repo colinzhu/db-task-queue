@@ -1,4 +1,4 @@
-package colinzhu.dbmsgqueue.example;
+package colinzhu.dbqueue.example;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

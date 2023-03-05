@@ -1,11 +1,10 @@
-package colinzhu.dbmsgqueue.example;
+package colinzhu.dbqueue.example;
 
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpServer;
 import io.vertx.ext.web.Router;
-import io.vertx.ext.web.RoutingContext;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Random;
@@ -17,7 +16,7 @@ public class PaymentCheckServer extends AbstractVerticle {
     }
 
     @Override
-    public void start(Promise<Void> startPromise) throws Exception {
+    public void start(Promise<Void> startPromise) {
         HttpServer server = vertx.createHttpServer();
         Router router = Router.router(vertx);
 

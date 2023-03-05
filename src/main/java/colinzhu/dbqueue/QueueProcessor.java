@@ -1,4 +1,4 @@
-package colinzhu.dbmsgqueue;
+package colinzhu.dbqueue;
 
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;

@@ -1,4 +1,4 @@
-package colinzhu.dbmsgqueue.example;
+package colinzhu.dbqueue.example;
 
 import io.vertx.core.Future;
 import io.vertx.core.Promise;

@@ -1,9 +1,9 @@
-package colinzhu.dbmsgqueue.example;
+package colinzhu.dbqueue.example;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
-import colinzhu.dbmsgqueue.RetryApiInvoker;
-import colinzhu.dbmsgqueue.QueueProcessor;
+import colinzhu.dbqueue.RetryApiInvoker;
+import colinzhu.dbqueue.QueueProcessor;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.CompositeFuture;
 import io.vertx.core.Future;
