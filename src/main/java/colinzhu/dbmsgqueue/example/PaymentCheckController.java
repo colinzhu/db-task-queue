@@ -15,6 +15,9 @@ import io.vertx.ext.web.client.WebClient;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @Slf4j
 public class PaymentCheckController extends AbstractVerticle {
     public static void main(String[] args) {
@@ -47,14 +50,21 @@ public class PaymentCheckController extends AbstractVerticle {
         queueProcessor.fetchBatchAndProcess(() -> paymentRepo.findByStatusOrderByCreateTime(status, 100), this::processSinglePayment, this::postBatchProcessing);
     }
 
-    private Future<Integer> processSinglePayment(Payment payment) {
+    private Future<Payment> processSinglePayment(Payment payment) {
         HttpRequest<Buffer> httpRequest = client.get(8888, "localhost", "/?id=" + payment.getId());
         Future<HttpResponse<Buffer>> respFuture = Future.future(promise -> retryApiInvoker.callHttpApiWithRetry(String.valueOf(payment.getId()), httpRequest::send, promise));
-        return respFuture.compose(response -> paymentRepo.updateStatusById("CHECKED", payment.getId()));
+        return respFuture.map(httpResp -> {
+            if (httpResp.statusCode() == 200) {
+                payment.setStatus("CHECKED");
+            } else if (httpResp.statusCode() == 400) {
+                payment.setStatus("CHECK_400");
+            }
+            return payment;
+        });
     }
 
-    private Future<Void> postBatchProcessing(CompositeFuture compositeFuture) {
-        compositeFuture.list().forEach(i -> log.info(i.toString()));
-        return Future.succeededFuture();
+    private Future<Integer> postBatchProcessing(CompositeFuture compositeFuture) {
+        List<Payment> payments = compositeFuture.list().stream().map(i -> (Payment) i).collect(Collectors.toList());
+        return paymentRepo.updateStatusInBatch(payments);
     }
 }

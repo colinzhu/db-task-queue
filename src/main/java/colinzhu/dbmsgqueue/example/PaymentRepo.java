@@ -9,10 +9,11 @@ import io.vertx.sqlclient.Row;
 import io.vertx.sqlclient.RowSet;
 import io.vertx.sqlclient.SqlResult;
 import io.vertx.sqlclient.Tuple;
+import io.vertx.sqlclient.templates.SqlTemplate;
+import io.vertx.sqlclient.templates.TupleMapper;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Slf4j
 public class PaymentRepo {
@@ -21,6 +22,13 @@ public class PaymentRepo {
      */
 
     private final JDBCPool pool;
+
+    private final TupleMapper<Payment> updatePaymentStatusToParamMapper = TupleMapper.mapper(payment -> {
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("id", payment.getId());
+        parameters.put("status", payment.getStatus());
+        return parameters;
+    });
 
     public PaymentRepo(Vertx vertx) {
         final JsonObject config = new JsonObject()
@@ -64,6 +72,16 @@ public class PaymentRepo {
                 .execute(Tuple.of(status, id))
                 .map(SqlResult::rowCount);
     }
+
+    public Future<Integer> updateStatusInBatch(List<Payment> payments) {
+        return SqlTemplate.forUpdate(pool, "UPDATE PAYMENT SET STATUS=#{status} WHERE id=#{id}")
+                .mapFrom(updatePaymentStatusToParamMapper)
+                .executeBatch(payments)
+                .map(SqlResult::size)
+                .onSuccess(ar -> log.info("update status in batch completed."))
+                .onFailure(err -> log.error("failed to update status in batch"));
+    }
+
 
     public void updateStatusById(Vertx vertx, Promise<Integer> promise, String status, Long id) {
         pool.preparedQuery("UPDATE PAYMENT SET STATUS = ? WHERE ID = ?")
