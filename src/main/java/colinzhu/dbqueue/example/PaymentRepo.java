@@ -67,16 +67,16 @@ public class PaymentRepo {
                 });
     }
 
-    public Future<Integer> updateStatus(Payment payment) {
+    public Future<Integer> updateStatus(Payment oriPayment, String newStatus) {
         return SqlTemplate.forUpdate(pool, "UPDATE PAYMENT SET STATUS=#{status} WHERE id=#{id}")
                 .mapFrom(updatePaymentStatusToParamMapper)
-                .execute(payment)
+                .execute(oriPayment)
                 .map(SqlResult::rowCount)
                 .onSuccess(ar -> {
                     if (ar == 1) {
-                        log.info("[updateStatus] [{}] [{}] completed", payment.getId(), payment.getStatus());
+                        log.info("[updateStatus] [{}] [{}] completed", oriPayment.getId(), oriPayment.getStatus());
                     } else {
-                        log.warn("[updateStatus] [{}] [{}] failed, rowCount:{}", payment.getId(), payment.getStatus(), ar);
+                        log.warn("[updateStatus] [{}] [{}] failed, rowCount:{}", oriPayment.getId(), oriPayment.getStatus(), ar);
                     }
                 })
                 .onFailure(err -> log.error("[updateStatus] [{}] [{}] error", err));

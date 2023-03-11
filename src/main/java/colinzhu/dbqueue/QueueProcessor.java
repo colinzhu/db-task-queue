@@ -16,30 +16,37 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @RequiredArgsConstructor
-@Accessors(chain = true)
-public class QueueProcessor {
+@Accessors(fluent = true)
+public class QueueProcessor<T> {
     private final Vertx vertx;
     private final String queueName;
 
     @Setter
     private int noTaskPollInterval = 5000;
     @Setter
+    private int hasTaskPollInterval = 1;
+    @Setter
     private int processErrRetryInterval = 5000;
     @Setter
     private int errPollingRetryInterval = 60 * 1000;
     @Setter
     private boolean continueWhenNoTask = true;
+    @Setter
+    private Supplier<Future<List<T>>> listFutureSupplier;
+    @Setter
+    private Function<T, Future<?>> itemProcessor;
+    @Setter
+    private Function<CompositeFuture, Future<?>> postBatchProcessor;
 
 
-    public <T> void fetchBatchAndProcess(Supplier<Future<List<T>>> listFutureSupplier, Function<T, Future<?>> itemProcessor, Function<CompositeFuture, Future<?>> postBatchProcessor) {
+    public void fetchBatchAndProcess() {
         long batchId = System.currentTimeMillis();
-        Consumer<Integer> retry = delay -> vertx.setTimer(delay, id -> fetchBatchAndProcess(listFutureSupplier, itemProcessor, postBatchProcessor));
         listFutureSupplier.get()
                 .onSuccess(list -> {
                     if (list.size() > 0) {
                         log.info("[{}][Batch:{}] size:{}, started", queueName, batchId, list.size());
                         List<Future> futures = list.stream().map(itemProcessor).collect(Collectors.toList());
-                        CompositeFuture.all(futures).compose(compositeFuture -> {
+                        CompositeFuture.join(futures).compose(compositeFuture -> {
                             if (postBatchProcessor == null) {
                                 return Future.succeededFuture();
                             } else {
@@ -47,24 +54,28 @@ public class QueueProcessor {
                                 return postBatchProcessor.apply(compositeFuture);
                             }
                         }).onSuccess(event -> {
-                            log.info("[{}][Batch:{}] size:{}, all processed", queueName, batchId, futures.size());
-                            fetchBatchAndProcess(listFutureSupplier, itemProcessor, postBatchProcessor);
+                            log.info("[{}][Batch:{}] size:{}, all items succeeded", queueName, batchId, futures.size());
+                            rerunWithDelay(hasTaskPollInterval);
                         }).onFailure(e -> {
-                            log.error("[{}][Batch:{}] error processing batch, retry in {}ms", queueName, batchId, processErrRetryInterval, e);
-                            retry.accept(processErrRetryInterval);
+                            // the item processor should handle all the exceptions, this is only a safety net e.g. not update to update record status in DB
+                            log.error("[{}][Batch:{}] all items completed, but at least one item failed. Retry in {}ms", queueName, batchId, processErrRetryInterval, e);
+                            rerunWithDelay(processErrRetryInterval);
                         });
                     } else {
                         if (continueWhenNoTask) {
                             log.debug("[{}][Batch:{}] size:0, fetch again in {}ms", queueName, batchId, noTaskPollInterval);
-                            retry.accept(noTaskPollInterval);
+                            rerunWithDelay(noTaskPollInterval);
                         } else {
                             log.info("[{}][Batch:{}] size:0, no more fetching.", queueName, batchId);
                         }
                     }
                 }).onFailure(e -> {
                     log.error("[{}][Batch:{}] Failed to fetch records, retry in {}ms", queueName, errPollingRetryInterval, e);
-                    retry.accept(errPollingRetryInterval);
+                    rerunWithDelay(errPollingRetryInterval);
                 });
     }
 
+    private void rerunWithDelay(long delay) {
+        vertx.setTimer(delay, id -> fetchBatchAndProcess());
+    }
 }

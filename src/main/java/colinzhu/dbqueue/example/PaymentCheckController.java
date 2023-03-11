@@ -44,22 +44,31 @@ public class PaymentCheckController extends AbstractVerticle {
     }
 
     private void processQueue(String status, boolean continueWhenNoTask) {
-        QueueProcessor queueProcessor = new QueueProcessor(vertx, "QUEUE-MSG-" + status);
-        queueProcessor.setNoTaskPollInterval(5000).setContinueWhenNoTask(continueWhenNoTask);
-        queueProcessor.fetchBatchAndProcess(() -> paymentRepo.findByStatusOrderByCreateTime(status, 100), this::processSinglePayment, null);
+        QueueProcessor<Payment> queueProcessor = new QueueProcessor(vertx, "QUEUE-MSG-" + status);
+        queueProcessor.noTaskPollInterval(5000)
+                .continueWhenNoTask(continueWhenNoTask)
+                .listFutureSupplier(() -> paymentRepo.findByStatusOrderByCreateTime(status, 100))
+                .itemProcessor(this::processSinglePayment)
+                .fetchBatchAndProcess();
+        //queueProcessor.fetchBatchAndProcess(() -> paymentRepo.findByStatusOrderByCreateTime(status, 100), this::processSinglePayment, null);
     }
 
     private Future<Integer> processSinglePayment(Payment payment) {
         HttpRequest<Buffer> httpRequest = client.get(8888, "localhost", "/?id=" + payment.getId());
         Future<HttpResponse<Buffer>> respFuture = Future.future(promise -> retryApiInvoker.callHttpApiWithRetry(String.valueOf(payment.getId()), httpRequest::send, promise));
         return respFuture.map(httpResp -> {
+            String newStatus;
             if (httpResp.statusCode() == 200) {
-                payment.setStatus("CHECKED");
-            } else if (httpResp.statusCode() == 400) {
-                payment.setStatus("CHECK_400");
+                newStatus = "CHECKED";
+            } else {
+                newStatus = "CHECK_ERROR_" + httpResp.statusCode();
             }
-            return payment;
-        }).compose(pay -> paymentRepo.updateStatus(pay));
+            return newStatus;
+        }).compose(newStatus -> paymentRepo.updateStatus(payment, newStatus))
+                .onFailure(err -> { // Safety net, in case any unexpected error, update record status to "CHECK_ERROR_UNEXPECTED"
+                    log.error("[{}] Unexpected error occurred.", payment.getId(), err);
+                    paymentRepo.updateStatus(payment, "CHECK_ERROR_UNEXPECTED");
+                });
     }
 
     private Future<Integer> postBatchProcessing(CompositeFuture compositeFuture) {
