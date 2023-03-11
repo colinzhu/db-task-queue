@@ -37,7 +37,7 @@ public class PaymentRepo {
                 .put("datasourceName", "example-db")
                 .put("user", "sa")
                 .put("password", "sa")
-                .put("max_pool_size", 5);
+                .put("max_pool_size", 20);
 
         pool = JDBCPool.pool(vertx, config);
 
@@ -68,18 +68,17 @@ public class PaymentRepo {
     }
 
     public Future<Integer> updateStatus(Payment oriPayment, String newStatus) {
-        return SqlTemplate.forUpdate(pool, "UPDATE PAYMENT SET STATUS=#{status} WHERE id=#{id}")
-                .mapFrom(updatePaymentStatusToParamMapper)
-                .execute(oriPayment)
+        return SqlTemplate.forUpdate(pool, "UPDATE PAYMENT SET STATUS=#{newStatus} WHERE id=#{id}")
+                .execute(Map.of("newStatus", newStatus, "id", oriPayment.getId()))
                 .map(SqlResult::rowCount)
                 .onSuccess(ar -> {
                     if (ar == 1) {
-                        log.info("[updateStatus] [{}] [{}] completed", oriPayment.getId(), oriPayment.getStatus());
+                        log.info("[updateStatus] [{}] [{}] completed", oriPayment.getId(), newStatus);
                     } else {
-                        log.warn("[updateStatus] [{}] [{}] failed, rowCount:{}", oriPayment.getId(), oriPayment.getStatus(), ar);
+                        log.warn("[updateStatus] [{}] [{}] failed, rowCount:{}", oriPayment.getId(), newStatus, ar);
                     }
                 })
-                .onFailure(err -> log.error("[updateStatus] [{}] [{}] error", err));
+                .onFailure(err -> log.error("[updateStatus] [{}] error", oriPayment.getId(), err));
     }
 
     public Future<Integer> updateStatusInBatch(List<Payment> payments) {

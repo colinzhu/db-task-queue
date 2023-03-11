@@ -19,34 +19,45 @@ import java.util.function.Supplier;
 public class RetryApiInvoker {
     private final Vertx vertx;
     private final String apiName;
-
     @Setter
-    private int serverErrRetryInterval = 30 * 1000;
+    private int err401RetryInterval = 30 * 1000;
+    @Setter
+    private int err5xxRetryInterval = 30 * 1000;
     @Setter
     private int networkErrRetryInterval = 30 * 1000;
 
-    public void callHttpApiWithRetry(String corrId, Supplier<Future<HttpResponse<Buffer>>> httpRespFutureSupplier, Promise<HttpResponse<Buffer>> promise) {
-        Consumer<Integer> retry = delay -> vertx.setTimer(delay, id -> callHttpApiWithRetry(corrId, httpRespFutureSupplier, promise));
+    /**
+     * The method will only return Future of status code 200 or 400, for other cases it will retry until get 200 or 400
+     * @param corrId for logging
+     * @param httpRespFutureSupplier the action to fire the http request and get the http response
+     * @return
+     */
+    public Future<HttpResponse<Buffer>> invokeApi(Object corrId, Supplier<Future<HttpResponse<Buffer>>> httpRespFutureSupplier) {
+        return Future.future(promise -> callHttpApiWithRetry(String.valueOf(corrId), httpRespFutureSupplier, promise));
+    }
+
+    private void callHttpApiWithRetry(String corrId, Supplier<Future<HttpResponse<Buffer>>> httpRespFutureSupplier, Promise<HttpResponse<Buffer>> promise) {
+        Consumer<Integer> delayAndRetry = delay -> vertx.setTimer(delay, id -> callHttpApiWithRetry(corrId, httpRespFutureSupplier, promise));
         httpRespFutureSupplier.get()
                 .onSuccess(httpResp -> {
                     int statusCode = httpResp.statusCode();
-                    if (statusCode == 200) {
+                    if (statusCode >= 200 && statusCode <= 299) {
                         log.info("[{}] [{}] {}", apiName, corrId, statusCode);
                         promise.complete(httpResp);
-                    } else if (statusCode == 400) {
+                    } else if (statusCode == 401) { // pls make sure retry can fix the 401 error. E.g. with new token
+                        log.info("[{}] [{}] {} retry in {}ms", apiName, corrId, statusCode, err401RetryInterval);
+                        delayAndRetry.accept(err401RetryInterval);
+                    } else if (statusCode >= 400 && statusCode <= 499) {
                         log.info("[{}] [{}] {}", apiName, corrId, statusCode);
                         promise.complete(httpResp);
-                    } else if (statusCode >= 500 && statusCode <= 599) {
-                        log.info("[{}] [{}] {} retry in {}ms", apiName, corrId, statusCode, serverErrRetryInterval);
-                        retry.accept(serverErrRetryInterval);
-                    } else {
-                        log.info("[{}] [{}] {} retry in {}ms", apiName, corrId, statusCode, serverErrRetryInterval);
-                        retry.accept(serverErrRetryInterval);
+                    } else { // 5xx and 3xx errors
+                        log.info("[{}] [{}] {} retry in {}ms", apiName, corrId, statusCode, err5xxRetryInterval);
+                        delayAndRetry.accept(err5xxRetryInterval);
                     }
                 })
-                .onFailure(err -> {
+                .onFailure(err -> { // network error
                     log.info("[{}] [{}] Failed to call API, retry in {}ms, {}", apiName, corrId, networkErrRetryInterval, err.getMessage());
-                    retry.accept(networkErrRetryInterval);
+                    delayAndRetry.accept(networkErrRetryInterval);
                 });
     }
 

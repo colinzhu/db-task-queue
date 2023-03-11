@@ -22,10 +22,10 @@ public class PaymentCheckServer extends AbstractVerticle {
 
         router.route().handler(routingContext -> {
             Random random = new Random();
-            int[] values = {200, 400, 500};
+            int[] values = {200, 400};
             int randomStatusCode = values[random.nextInt(values.length)];
             log.info("[{}] request received {}",routingContext.request().getParam("id"), randomStatusCode);
-            vertx.setTimer(10, id -> {
+            vertx.setTimer(50, id -> {
                 routingContext.response().setStatusCode(randomStatusCode).end(randomStatusCode + "");
             });
         });
