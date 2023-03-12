@@ -44,7 +44,7 @@ public class QueueProcessor<T> {
                 List<Future> futures = batch.stream().map(itemConsumer).collect(Collectors.toList());
                 CompositeFuture.join(futures).onSuccess(event -> {
                     long end = System.currentTimeMillis();
-                    log.info("[{}][Batch:{}] size:{}, all items succeeded. Fetch and process time:{}ms, process time:{}ms", queueName, batchId, futures.size(), end - batchId, end - procStart);
+                    log.info("[{}][Batch:{}] size:{}, all items succeeded. Fetch and process time:{}ms, fetch time:{}ms process time:{}ms", queueName, batchId, futures.size(), end - batchId, procStart - batchId, end - procStart);
                     rerunWithDelay(hasTaskPollInterval);
                 }).onFailure(e -> {
                     // item consumer should handle all exceptions, this is only a safety net e.g. not able to update record status in DB

@@ -68,14 +68,15 @@ public class PaymentRepo {
     }
 
     public Future<Integer> updateStatus(Payment oriPayment, String newStatus) {
+        long start = System.currentTimeMillis();
         return SqlTemplate.forUpdate(pool, "UPDATE PAYMENT SET STATUS=#{newStatus} WHERE id=#{id}")
                 .execute(Map.of("newStatus", newStatus, "id", oriPayment.getId()))
                 .map(SqlResult::rowCount)
                 .onSuccess(ar -> {
                     if (ar == 1) {
-                        log.info("[updateStatus] [{}] [{}] completed", oriPayment.getId(), newStatus);
+                        log.info("[updateStatus] [{}] [{}] completed, time:{}ms", oriPayment.getId(), newStatus, System.currentTimeMillis() - start);
                     } else {
-                        log.warn("[updateStatus] [{}] [{}] failed, rowCount:{}", oriPayment.getId(), newStatus, ar);
+                        log.warn("[updateStatus] [{}] [{}] failed, rowCount:{}, time:{}ms", oriPayment.getId(), newStatus, System.currentTimeMillis() - start, ar);
                     }
                 })
                 .onFailure(err -> log.error("[updateStatus] [{}] error", oriPayment.getId(), err));
@@ -105,9 +106,10 @@ public class PaymentRepo {
     }
 
     public Future<RowSet<Row>> insert(Payment payment, int number) {
+        long start = System.currentTimeMillis();
         return pool.preparedQuery("insert into PAYMENT (ID, STATUS, CREATE_TIME) values (?, ?, ?)")
                 .execute(Tuple.of(payment.getId(), payment.getStatus(), payment.getCreateTime()))
-                .onSuccess(rows -> log.info("#{} inserted", number))
+                .onSuccess(rows -> log.info("#{} inserted, time:{}ms", number, System.currentTimeMillis() - start))
                 .onFailure(e -> log.error("error inserting", e));
     }
 

@@ -25,7 +25,7 @@ public class PaymentCheckServer extends AbstractVerticle {
             int[] values = {200, 400};
             int randomStatusCode = values[random.nextInt(values.length)];
             log.info("[{}] request received {}",routingContext.request().getParam("id"), randomStatusCode);
-            vertx.setTimer(50, id -> {
+            vertx.setTimer(500, id -> {
                 routingContext.response().setStatusCode(randomStatusCode).end(randomStatusCode + "");
             });
         });

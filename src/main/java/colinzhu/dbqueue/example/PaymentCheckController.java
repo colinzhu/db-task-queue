@@ -18,17 +18,21 @@ import org.slf4j.LoggerFactory;
 public class PaymentCheckController extends AbstractVerticle {
     public static void main(String[] args) {
         Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
-        //root.setLevel(Level.INFO);
+        root.setLevel(Level.INFO);
+        Logger dbPool = (Logger) LoggerFactory.getLogger("com.mchange.v2.resourcepool.BasicResourcePool");
+        dbPool.setLevel(Level.DEBUG);
         Vertx.vertx().deployVerticle(PaymentCheckController.class.getName());
     }
     private WebClient webClient;
     private PaymentRepo paymentRepo;
     private RetryApiInvoker retryApiInvoker;
+    private int batchSize = 100;
+    private int webClientPoolSize = 1000;
 
     @Override
     public void start() throws Exception {
         super.start();
-        webClient = WebClient.create(vertx, new WebClientOptions().setMaxPoolSize(100));
+        webClient = WebClient.create(vertx, new WebClientOptions().setMaxPoolSize(webClientPoolSize));
         paymentRepo = new PaymentRepo(vertx);
         retryApiInvoker = new RetryApiInvoker(vertx, "API-MSG-CHECK");
         retryApiInvoker.setErr5xxRetryInterval(5000);
@@ -44,7 +48,7 @@ public class PaymentCheckController extends AbstractVerticle {
         QueueProcessor<Payment> queueProcessor = new QueueProcessor<>(vertx, "QUEUE-MSG-" + status);
         queueProcessor.noTaskPollInterval(5000)
                 .continueWhenNoTask(continueWhenNoTask)
-                .batchSupplier(() -> paymentRepo.findByStatusOrderByCreateTime(status, 100))
+                .batchSupplier(() -> paymentRepo.findByStatusOrderByCreateTime(status, batchSize))
                 .itemConsumer(this::processSinglePayment)
                 .fetchBatchAndProcess();
     }
