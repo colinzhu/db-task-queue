@@ -10,9 +10,9 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.Random;
 
 @Slf4j
-public class PaymentCheckServer extends AbstractVerticle {
+public class DummyPaymentCheckServer extends AbstractVerticle {
     public static void main(String[] args) {
-        Vertx.vertx().deployVerticle(PaymentCheckServer.class.getName());
+        Vertx.vertx().deployVerticle(DummyPaymentCheckServer.class.getName());
     }
 
     @Override
@@ -25,7 +25,7 @@ public class PaymentCheckServer extends AbstractVerticle {
             int[] values = {200, 400};
             int randomStatusCode = values[random.nextInt(values.length)];
             log.info("[{}] request received {}",routingContext.request().getParam("id"), randomStatusCode);
-            vertx.setTimer(500, id -> {
+            vertx.setTimer(50, id -> {
                 routingContext.response().setStatusCode(randomStatusCode).end(randomStatusCode + "");
             });
         });
