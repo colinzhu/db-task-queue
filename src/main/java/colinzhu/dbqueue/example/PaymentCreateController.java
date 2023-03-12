@@ -20,7 +20,8 @@ public class PaymentCreateController extends AbstractVerticle {
         Logger root = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
         root.setLevel(Level.INFO);
         Logger dbPool = (Logger) LoggerFactory.getLogger("com.mchange.v2.resourcepool.BasicResourcePool");
-        dbPool.setLevel(Level.DEBUG);        Vertx.vertx().deployVerticle(PaymentCreateController.class.getName());
+        dbPool.setLevel(Level.DEBUG);
+        Vertx.vertx().deployVerticle(PaymentCreateController.class.getName());
     }
 
     private PaymentRepo paymentRepo;
@@ -35,8 +36,8 @@ public class PaymentCreateController extends AbstractVerticle {
     private void createPayment() {
         long start = System.currentTimeMillis();
         List<Future> allPaymentFutures = new ArrayList<>();
-        for (int i = 1; i <= 1000; i++) {
-            Future<RowSet<Row>> future = paymentRepo.insert(new Payment(System.nanoTime(), "CREATED", System.currentTimeMillis()), i);
+        for (int i = 1; i <= 10; i++) {
+            Future<RowSet<Row>> future = paymentRepo.insert(new Payment(System.nanoTime(), "CREATED", "B", System.currentTimeMillis()), i);
             allPaymentFutures.add(future);
         }
         CompositeFuture.all(allPaymentFutures).onSuccess(event -> {

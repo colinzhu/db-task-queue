@@ -1,7 +1,6 @@
 package colinzhu.dbqueue.example;
 
 import io.vertx.core.Future;
-import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonObject;
 import io.vertx.jdbcclient.JDBCPool;
@@ -11,9 +10,15 @@ import io.vertx.sqlclient.SqlResult;
 import io.vertx.sqlclient.Tuple;
 import io.vertx.sqlclient.templates.SqlTemplate;
 import io.vertx.sqlclient.templates.TupleMapper;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.*;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Slf4j
 public class PaymentRepo {
@@ -43,26 +48,12 @@ public class PaymentRepo {
 
     }
 
-    public Future<List<Payment>> findByStatusOrderByCreateTime3(String status, int limit) {
-        return Future.future(promise -> pool.preparedQuery("SELECT * FROM PAYMENT WHERE STATUS = ? order by CREATE_TIME LIMIT ?")
-                .execute(Tuple.of(status, limit))
-                .onFailure(e -> log.error("error", e))
-                .onSuccess(rows -> {
-                    List<Payment> paymentList = new ArrayList<>();
-                    for (Row row : rows) {
-                        paymentList.add(new Payment(row.getLong("ID"), row.getString("STATUS"), row.getLong("CREATE_TIME")));
-                        System.out.println(row.getInteger("ID") + " " + row.getString("STATUS") + " " + row.getLong("CREATE_TIME"));
-                    }
-                    promise.complete(paymentList);
-                }));
-    }
-
-    public Future<List<Payment>> findByStatusOrderByCreateTime(String status, int limit) {
-        return pool.preparedQuery("SELECT * FROM PAYMENT WHERE STATUS = ? order by CREATE_TIME LIMIT ?")
-                .execute(Tuple.of(status, limit))
+    public Future<List<Payment>> findByStatusOrderByCreateTime(String status, String instance, int limit) {
+        return pool.preparedQuery("SELECT * FROM PAYMENT WHERE STATUS = ? AND INSTANCE = ? order by CREATE_TIME LIMIT ?")
+                .execute(Tuple.of(status, instance, limit))
                 .compose(rows -> {
                     List<Payment> payments = new ArrayList<>();
-                    rows.forEach(row -> payments.add(new Payment(row.getLong("ID"), row.getString("STATUS"), row.getLong("CREATE_TIME"))));
+                    rows.forEach(row -> payments.add(new Payment(row.getLong("ID"), row.getString("STATUS"), row.getString("INSTANCE"), row.getLong("CREATE_TIME"))));
                     return  Future.succeededFuture(payments);
                 });
     }
@@ -82,35 +73,35 @@ public class PaymentRepo {
                 .onFailure(err -> log.error("[updateStatus] [{}] error", oriPayment.getId(), err));
     }
 
-    public Future<Integer> updateStatusInBatch(List<Payment> payments) {
-        return SqlTemplate.forUpdate(pool, "UPDATE PAYMENT SET STATUS=#{status} WHERE id=#{id}")
-                .mapFrom(updatePaymentStatusToParamMapper)
-                .executeBatch(payments)
-                .map(SqlResult::size)
-                .onSuccess(ar -> log.debug("update status in batch completed. {}", ar))
-                .onFailure(err -> log.error("failed to update status in batch"));
-    }
-
-
-    public void updateStatusById(Vertx vertx, Promise<Integer> promise, String status, Long id) {
-        pool.preparedQuery("UPDATE PAYMENT SET STATUS = ? WHERE ID = ?")
-                .execute(Tuple.of(status, id))
-                .onSuccess(rows -> {
-                    log.info("{}, DB updated to {}", id, status);
-                    promise.complete(rows.size());
-                })
-                .onFailure(e -> {
-                    log.error("Error update db status, retry in 5000ms", e);
-                    vertx.setTimer(5000, timerId -> updateStatusById(vertx, promise, status, id));
-                });
-    }
-
     public Future<RowSet<Row>> insert(Payment payment, int number) {
         long start = System.currentTimeMillis();
-        return pool.preparedQuery("insert into PAYMENT (ID, STATUS, CREATE_TIME) values (?, ?, ?)")
-                .execute(Tuple.of(payment.getId(), payment.getStatus(), payment.getCreateTime()))
+        return pool.preparedQuery("insert into PAYMENT (ID, STATUS, INSTANCE, CREATE_TIME) values (?, ?, ?, ?)")
+                .execute(Tuple.of(payment.getId(), payment.getStatus(), payment.getInstance(), payment.getCreateTime()))
                 .onSuccess(rows -> log.info("#{} inserted, time:{}ms", number, System.currentTimeMillis() - start))
                 .onFailure(e -> log.error("error inserting", e));
     }
+
+    public Future<List<Payment>> searchBy(SearchCriteria criteria) {
+        return pool.preparedQuery("SELECT * FROM PAYMENT WHERE STATUS = ? order by CREATE_TIME LIMIT ?")
+                .execute(Tuple.of(criteria.getStatus(), criteria.getLimit()))
+                .compose(rows -> {
+                    List<Payment> payments = new ArrayList<>();
+                    rows.forEach(row -> payments.add(new Payment(row.getLong("ID"), row.getString("STATUS"), row.getString("INSTANCE"), row.getLong("CREATE_TIME"))));
+                    return  Future.succeededFuture(payments);
+                });
+    }
+
+    @Data
+    public static class SearchCriteria {
+        private List<Long> idList;
+        private String status;
+        private LocalDate valueDateFrom;
+        private LocalDate valueDateTo;
+        private LocalDateTime createTimeFrom;
+        private LocalDateTime createTimeTo;
+        private String orderBy;
+        private Integer limit;
+    }
+
 
 }

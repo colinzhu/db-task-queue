@@ -1,8 +1,10 @@
 drop table payment;
 CREATE TABLE PAYMENT (
     ID bigint,
-    STATUS varchar(20),
-    CREATE_TIME bigint
+    STATUS varchar(30),
+    CREATE_TIME bigint,
+    INSTANCE varchar(30),
+    PRIMARY KEY (ID)
 );
 truncate table payment;
 insert into PAYMENT (ID, STATUS, CREATE_TIME) values (1, 'CREATED', 1677337372696);

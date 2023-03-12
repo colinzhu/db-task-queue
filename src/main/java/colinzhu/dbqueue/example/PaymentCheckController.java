@@ -8,6 +8,8 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Future;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.http.HttpServer;
+import io.vertx.ext.web.Router;
 import io.vertx.ext.web.client.HttpRequest;
 import io.vertx.ext.web.client.WebClient;
 import io.vertx.ext.web.client.WebClientOptions;
@@ -21,13 +23,19 @@ public class PaymentCheckController extends AbstractVerticle {
         root.setLevel(Level.INFO);
         Logger dbPool = (Logger) LoggerFactory.getLogger("com.mchange.v2.resourcepool.BasicResourcePool");
         dbPool.setLevel(Level.DEBUG);
-        Vertx.vertx().deployVerticle(PaymentCheckController.class.getName());
+        Vertx.vertx().deployVerticle(new PaymentCheckController("A"));
+        Vertx.vertx().deployVerticle(new PaymentCheckController("B"));
     }
     private WebClient webClient;
     private PaymentRepo paymentRepo;
     private RetryApiInvoker retryApiInvoker;
-    private int batchSize = 100;
+    private int batchSize = 1000;
     private int webClientPoolSize = 1000;
+    private final String instanceName;
+
+    public PaymentCheckController(String instanceName) {
+        this.instanceName = instanceName;
+    }
 
     @Override
     public void start() throws Exception {
@@ -37,18 +45,30 @@ public class PaymentCheckController extends AbstractVerticle {
         retryApiInvoker = new RetryApiInvoker(vertx, "API-MSG-CHECK");
         retryApiInvoker.setErr5xxRetryInterval(5000);
         processQueue("CREATED", true);
-        log.info("Verticle started.");
+        startHttpServer();
+        log.info("Verticle started. InstanceName:{}",  instanceName);
     }
 
-    public void processDeadQueue() {
-        processQueue("CREATED_DEAD", false);
+    private void startHttpServer() {
+        HttpServer server = vertx.createHttpServer();
+        Router router = Router.router(vertx);
+
+        router.route("/reprocess/CHECK_ERR_400").handler(routingContext -> {
+            processQueue_CHECK_ERR_400();
+            routingContext.response().end("processQueue_CHECK_ERR_400() triggered");
+        });
+        server.requestHandler(router).listen(8080).onSuccess(ar -> log.info("http server started at 8080"));
     }
 
-    private void processQueue(String status, boolean continueWhenNoTask) {
-        QueueProcessor<Payment> queueProcessor = new QueueProcessor<>(vertx, "QUEUE-MSG-" + status);
+    private void processQueue_CHECK_ERR_400() {
+        processQueue("CHECK_ERR_400", false);
+    }
+
+    private void processQueue(String status, boolean processNextBatch) {
+        QueueProcessor<Payment> queueProcessor = new QueueProcessor<>(vertx, "QUEUE-MSG-" + status + "-" + instanceName);
         queueProcessor.noTaskPollInterval(5000)
-                .continueWhenNoTask(continueWhenNoTask)
-                .batchSupplier(() -> paymentRepo.findByStatusOrderByCreateTime(status, batchSize))
+                .processNextBatch(processNextBatch)
+                .batchSupplier(() -> paymentRepo.findByStatusOrderByCreateTime(status, instanceName, batchSize))
                 .itemConsumer(this::processSinglePayment)
                 .fetchBatchAndProcess();
     }

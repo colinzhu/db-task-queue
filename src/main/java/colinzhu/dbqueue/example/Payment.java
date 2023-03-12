@@ -8,5 +8,6 @@ import lombok.Data;
 public class Payment {
     private Long id;
     private String status;
+    private String instance;
     private Long createTime;
 }

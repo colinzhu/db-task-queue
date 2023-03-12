@@ -29,7 +29,7 @@ public class QueueProcessor<T> {
     @Setter
     private int errPollingRetryInterval = 60 * 1000;
     @Setter
-    private boolean continueWhenNoTask = true;
+    private boolean processNextBatch = true;
     @Setter
     private Supplier<Future<List<T>>> batchSupplier;
     @Setter
@@ -45,14 +45,16 @@ public class QueueProcessor<T> {
                 CompositeFuture.join(futures).onSuccess(event -> {
                     long end = System.currentTimeMillis();
                     log.info("[{}][Batch:{}] size:{}, all items succeeded. Fetch and process time:{}ms, fetch time:{}ms process time:{}ms", queueName, batchId, futures.size(), end - batchId, procStart - batchId, end - procStart);
-                    rerunWithDelay(hasTaskPollInterval);
+                    if (processNextBatch) {
+                        rerunWithDelay(hasTaskPollInterval);
+                    }
                 }).onFailure(e -> {
                     // item consumer should handle all exceptions, this is only a safety net e.g. not able to update record status in DB
                     log.error("[{}][Batch:{}] size:{}, all items completed, but at least one item failed. Retry in {}ms", queueName, batchId, batch.size(), processErrRetryInterval, e);
                     rerunWithDelay(processErrRetryInterval);
                 });
             } else {
-                if (continueWhenNoTask) {
+                if (processNextBatch) {
                     log.debug("[{}][Batch:{}] size:0. Time:{}ms. Fetch again in {}ms", queueName, batchId, System.currentTimeMillis()-batchId, noTaskPollInterval);
                     rerunWithDelay(noTaskPollInterval);
                 } else {
